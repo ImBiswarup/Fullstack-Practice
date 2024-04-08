@@ -12,7 +12,8 @@ const Login = () => {
         e.preventDefault();
         try {
             const response = await axios.post('http://localhost:3000/login', { email, password });
-            toast.success(response.data.msg);
+            toast.success(`welcome ${response.data.user.name}`);
+            // console.log(response.data.user.name);
         } catch (error) {
             console.log(error.response.data);
             toast.error(error.response.data.msg);

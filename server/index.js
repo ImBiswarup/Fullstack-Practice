@@ -6,15 +6,18 @@ const bodyParser = require('body-parser');
 const cookieParser = require("cookie-parser");
 const bcrypt = require('bcrypt');
 const jwt = require("jsonwebtoken");
+const multer = require('multer');
 
 
 const app = express();
+
+app.use(express.json());
 const port = process.env.PORT;
 const DBUrl = process.env.DB_URL;
 
+app.use(cors());
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.json());
-app.use(cors());
 app.use(cookieParser());
 
 mongoose.connect(DBUrl)
@@ -57,32 +60,47 @@ const textSchema = new mongoose.Schema({
 
 const TextModel = mongoose.model('Text', textSchema);
 
-
-app.post('/', async (req, res) => {
-    const { text } = req.body;
-
-    try {
-        const storedInfo = await TextModel.create({ text });
-        res.json({ message: 'Data stored successfully' });
-    } catch (error) {
-        console.error('Error storing data:', error);
-        res.status(500).json({ error: 'Error storing data' });
-    }
+const fileSchema = new mongoose.Schema({
+    imageUrl: {
+        type: String,
+    },
 });
 
-const generateAuthToken = (user) => {
-    const payload = {
-        user: {
-            id: user._id,
-            name: user.name,
-            email: user.email,
-            role: user.role
-        }
-    };
+const FileModel = mongoose.model('File', fileSchema);
 
-    const token = jwt.sign(payload, process.env.JWT_SECRET);
-    return token;
-};
+// const generateAuthToken = (user) => {
+//     const payload = {
+//         user: {
+//             id: user._id,
+//             name: user.name,
+//             email: user.email,
+//             role: user.role
+//         }
+//     };
+
+//     const token = jwt.sign(payload, process.env.JWT_SECRET);
+//     return token;
+// };
+
+// const verifyAuthToken = (token) => {
+//     try {
+//         const decoded = jwt.verify(token, process.env.JWT_SECRET);
+//         return decoded;
+//     } catch (error) {
+//         // If verification fails, you can handle the error here
+//         console.error('Token verification failed:', error.message);
+//         return null;
+//     }
+// };
+
+// // Example usage:
+// const token = 'your_generated_token_here';
+// const decodedToken = verifyAuthToken(token);
+// if (decodedToken) {
+//     console.log('Token verified successfully:', decodedToken);
+// } else {
+//     console.log('Token verification failed.');
+// }
 
 app.post('/signup', async (req, res) => {
     try {
@@ -131,15 +149,56 @@ app.post('/login', async (req, res) => {
     }
 });
 
+
+const storage = multer.diskStorage({
+    // destination: function (req, file, cb) {
+    //     cb(null, './public/uploads')
+    // },
+    filename: function (req, file, cb) {
+        const originalName = file.originalname; // Get the original filename
+        const extension = originalName.split('.').pop(); // Get the file extension
+        const uniqueSuffix = Date.now(); // Add a timestamp to make the filename unique
+        const newFilename = `${originalName}-${uniqueSuffix}.${extension}`; // Construct the new filename
+        cb(null, newFilename); // Pass the new filename to multer
+    }
+});
+
+
+const upload = multer({ storage: storage })
+
+
+
+app.post('/uploads', upload.single('image'), async function (req, res, next) {
+    try {
+        console.log('req.body: ', req.body);
+        console.log('req.file: ', req.file);
+
+        // Create a new document in the FileModel collection with the image path
+        const newPost = await FileModel.create({
+            imageUrl: req.file.path,
+        });
+        console.log(newPost);
+
+        res.json({ msg: "Image uploaded successfully", imageUrl: req.file.path });
+    } catch (error) {
+        console.error('Error uploading image:', error);
+        res.status(500).json({ error: 'Error uploading image' });
+    }
+});
+
 app.get('/', async (req, res) => {
     try {
         const posts = await TextModel.find({});
-        res.json({ posts });
+        const images = await FileModel.find({});
+
+        // Send both posts and images data in the response
+        res.json({ posts, images });
     } catch (error) {
-        console.error('Error fetching posts:', error);
-        res.status(500).json({ error: 'Error fetching posts' });
+        console.error('Error fetching data:', error);
+        res.status(500).json({ error: 'Error fetching data' });
     }
 });
+
 app.get('/users', async (req, res) => {
     try {
         const users = await userModel.find({});
