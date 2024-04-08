@@ -150,30 +150,39 @@ app.post('/login', async (req, res) => {
 });
 
 
+app.post('/upload', async (req, res) => {
+    const { text } = req.body;
+    const newText = await TextModel.create({ text });
+    res.status(200).json({ newText });
+});
+
+
 const storage = multer.diskStorage({
-    // destination: function (req, file, cb) {
-    //     cb(null, './public/uploads')
-    // },
+    destination: function (req, file, cb) {
+        cb(null, './public/uploads')
+    },
+    // filename: function (req, file, cb) {
+    //     const originalName = file.originalname; // Get the original filename
+    //     const extension = originalName.split('.').pop(); // Get the file extension
+    //     const uniqueSuffix = Date.now(); // Add a timestamp to make the filename unique
+    //     const newFilename = `${originalName}-${uniqueSuffix}.${extension}`; // Construct the new filename
+    //     cb(null, newFilename); // Pass the new filename to multer
+    // }
+
     filename: function (req, file, cb) {
-        const originalName = file.originalname; // Get the original filename
-        const extension = originalName.split('.').pop(); // Get the file extension
-        const uniqueSuffix = Date.now(); // Add a timestamp to make the filename unique
-        const newFilename = `${originalName}-${uniqueSuffix}.${extension}`; // Construct the new filename
-        cb(null, newFilename); // Pass the new filename to multer
-    }
+        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9)
+        cb(null, file.fieldname + '-' + uniqueSuffix)
+      }
 });
 
 
 const upload = multer({ storage: storage })
-
-
 
 app.post('/uploads', upload.single('image'), async function (req, res, next) {
     try {
         console.log('req.body: ', req.body);
         console.log('req.file: ', req.file);
 
-        // Create a new document in the FileModel collection with the image path
         const newPost = await FileModel.create({
             imageUrl: req.file.path,
         });
@@ -191,8 +200,7 @@ app.get('/', async (req, res) => {
         const posts = await TextModel.find({});
         const images = await FileModel.find({});
 
-        // Send both posts and images data in the response
-        res.json({ posts, images });
+        res.json({ posts, images })
     } catch (error) {
         console.error('Error fetching data:', error);
         res.status(500).json({ error: 'Error fetching data' });

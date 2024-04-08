@@ -12,8 +12,7 @@ const Home = () => {
     const fetchData = async () => {
         try {
             const response = await axios.get('http://localhost:3000/');
-            console.log(response.data.posts);
-            console.log(response.data.images);
+            console.log(response.data);
             setData(response.data.posts);
             setImages(response.data.images);
         } catch (error) {
@@ -31,7 +30,7 @@ const Home = () => {
     const handleSubmit = async (e) => {
         e.preventDefault();
         try {
-            const textResponse = await axios.post('http://localhost:3000/', { text });
+            const textResponse = await axios.post('http://localhost:3000/upload', { text });
             setText('');
             fetchData();
             console.log(textResponse.data)
@@ -70,7 +69,6 @@ const Home = () => {
             {images.map((image, index) => (
                 <img key={index} src={image.imageUrl} alt={`Image ${index}`} />
             ))}
-            
             <div className="w-screen h-screen bg-red-200 flex items-center justify-center">
                 <form onSubmit={handleSubmit}>
                     <input
