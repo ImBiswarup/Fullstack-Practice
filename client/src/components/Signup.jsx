@@ -14,13 +14,17 @@ const Signup = () => {
         e.preventDefault();
         try {
             const response = await axios.post('http://localhost:3000/signup', { name, email, password });
-            console.log(response.data)
+            console.log(response.data);
             toast.success(response.data.msg);
-
-            Cookies.set('token', response.data.token);
+            
+            // Set the 'token' cookie with the received token
+            Cookies.set('token', response.data.token, { expires: 7 }); // Expires in 7 days
+            
+            // Optionally, redirect to another page after successful signup
+            // window.location.href = '/login';
         } catch (error) {
-            console.log(error);
-            toast.error(error.response.error.msg);
+            console.error(error);
+            toast.error(error.response.data.msg);
         }
     }
 

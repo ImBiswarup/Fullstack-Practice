@@ -1,6 +1,7 @@
 import axios from 'axios'
 import React, { useState } from 'react'
 import { Link } from 'react-router-dom'
+import Cookies from 'js-cookie';
 import { ToastContainer, toast } from 'react-toastify';
 
 const Login = () => {
@@ -12,10 +13,16 @@ const Login = () => {
         e.preventDefault();
         try {
             const response = await axios.post('http://localhost:3000/login', { email, password });
-            toast.success(`welcome ${response.data.user.name}`);
-            // console.log(response.data.user.name);
+            console.log(response.data);
+            toast.success(`Welcome ${response.data.user.name}`);
+            
+            // Set the 'token' cookie with the received token
+            Cookies.set('token', response.data.token, { expires: 7 }); // Expires in 7 days
+            
+            // Optionally, redirect to another page after successful login
+            // window.location.href = '/';
         } catch (error) {
-            console.log(error.response.data);
+            console.error(error.response.data);
             toast.error(error.response.data.msg);
         }
     };

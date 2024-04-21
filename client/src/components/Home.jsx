@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { Link } from 'react-router-dom';
+import Cookies from 'js-cookie';
+
 
 const Home = () => {
     const [data, setData] = useState([]);
@@ -12,16 +14,9 @@ const Home = () => {
     const fetchData = async () => {
         try {
             const response = await axios.get('http://localhost:3000/');
-            console.log(response.data);
             setData(response.data.posts);
+            setUsers(response.data.users);
             setImages(response.data.images);
-        } catch (error) {
-            console.error('Error fetching data:', error);
-        }
-
-        try {
-            const userResponse = await axios.get('http://localhost:3000/users');
-            setUsers(userResponse.data.users);
         } catch (error) {
             console.error('Error fetching data:', error);
         }
@@ -30,14 +25,18 @@ const Home = () => {
     const handleSubmit = async (e) => {
         e.preventDefault();
         try {
-            const textResponse = await axios.post('http://localhost:3000/upload', { text });
+            const textResponse = await axios.post('http://localhost:3000/upload', { text }, {
+                headers: {
+                    Authorization: `Bearer ${Cookies.get('token')}`
+                }
+            });
             setText('');
             fetchData();
-            console.log(textResponse.data)
         } catch (error) {
             console.error('Error submitting data:', error);
         }
     };
+
 
     useEffect(() => {
         fetchData();
@@ -49,7 +48,7 @@ const Home = () => {
                 <h2 className='text-xl font-bold'>Posts:</h2>
                 <ul>
                     {data.map((post, index) => (
-                        <li key={index}>{post.text}</li>
+                        <li key={index}>{post.text} - {post.createdBy}</li>
                     ))}
                 </ul>
             </div>
@@ -83,6 +82,8 @@ const Home = () => {
                     <button className='bg-blue-500 rounded' type="submit">Submit</button>
                     <Link to={'/signup'}>Create Account</Link>
                     <Link className='ml-5' to={'/file-uploading'}>Upload files</Link>
+                    <Link className='ml-5' to={'/user/order'}>Order here</Link>
+                    <Link className='ml-5' to={'/admin/order'}>Order Admin</Link>
                 </form>
             </div>
         </div>

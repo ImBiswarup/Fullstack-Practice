@@ -7,6 +7,7 @@ const cookieParser = require("cookie-parser");
 const bcrypt = require('bcrypt');
 const jwt = require("jsonwebtoken");
 const multer = require('multer');
+const cloudinary = require('cloudinary').v2;
 
 
 const app = express();
@@ -44,17 +45,20 @@ const userSchema = new mongoose.Schema({
         enum: ['CUSTOMER', 'ADMIN'],
         default: 'CUSTOMER'
     },
+    token: {
+        type: String,
+    }
 }, { timestamps: true });
-
-userSchema.pre("save", async function () {
-    this.password = await bcrypt.hash(this.password, 12);
-});
 
 const userModel = mongoose.model('User', userSchema);
 
 const textSchema = new mongoose.Schema({
     text: {
         type: String,
+    },
+    createdBy: {
+        type: String, // Store only the username
+        required: true,
     },
 }, { timestamps: true });
 
@@ -64,34 +68,33 @@ const fileSchema = new mongoose.Schema({
     imageUrl: {
         type: String,
     },
+
 });
 
 const FileModel = mongoose.model('File', fileSchema);
 
-// const generateAuthToken = (user) => {
-//     const payload = {
-//         user: {
-//             id: user._id,
-//             name: user.name,
-//             email: user.email,
-//             role: user.role
-//         }
-//     };
+const orderSchema = new mongoose.Schema({
+    itemName: {
+        type: String,
+        required: true,
+    },
+    quantity: {
+        type: Number,
+        required: true,
+    },
+    location: {
+        type: String,
+        required: true,
+    },
+    destination: {
+        type: String,
+        required: true,
+    },
 
-//     const token = jwt.sign(payload, process.env.JWT_SECRET);
-//     return token;
-// };
+}, { timestamps: true })
 
-// const verifyAuthToken = (token) => {
-//     try {
-//         const decoded = jwt.verify(token, process.env.JWT_SECRET);
-//         return decoded;
-//     } catch (error) {
-//         // If verification fails, you can handle the error here
-//         console.error('Token verification failed:', error.message);
-//         return null;
-//     }
-// };
+const orderModel = mongoose.model('Order', orderSchema);
+
 
 // // Example usage:
 // const token = 'your_generated_token_here';
@@ -102,6 +105,33 @@ const FileModel = mongoose.model('File', fileSchema);
 //     console.log('Token verification failed.');
 // }
 
+
+const generateAuthToken = (user) => {
+    const payload = {
+        id: user._id,
+        name: user.name,
+        role: user.role,
+    };
+    const token = jwt.sign(payload, process.env.JWT_SECRET);
+    return token;
+};
+
+
+const verifyAuthToken = (req, res, next) => {
+    const token = (req.headers.authorization.split(' ')[1]);
+    if (!token) return res.status(401).json({ msg: 'Authorization token missing' });
+    try {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        req.user = decoded;
+        next();
+    } catch (error) {
+        console.error('Token verification failed:', error.message);
+        return res.status(401).json({ msg: 'Invalid token' });
+    }
+};
+
+
+
 app.post('/signup', async (req, res) => {
     try {
         const { email, password, name } = req.body;
@@ -109,10 +139,15 @@ app.post('/signup', async (req, res) => {
         if (existingUser) {
             return res.json({ msg: "User already exists" });
         }
-        const user = await userModel.create({ email, password, name });
+
+        const hashedPassword = await bcrypt.hash(password, 12);
+
+        const user = await userModel.create({ email, password: hashedPassword, name });
 
         const token = generateAuthToken(user);
-        console.log('token: ', token);
+
+        user.token = token;
+        await user.save();
 
         res.cookie("token", token, {
             withCredentials: true,
@@ -121,6 +156,7 @@ app.post('/signup', async (req, res) => {
 
         res.status(201).json({ msg: "User signed in successfully", success: true, user, token });
     } catch (error) {
+        console.error('Error during signup:', error);
         res.status(500).json({ msg: "User signed in failed" });
     }
 });
@@ -142,7 +178,14 @@ app.post('/login', async (req, res) => {
             return res.status(401).json({ msg: 'Invalid password' });
         }
 
-        res.status(200).json({ msg: 'Login successful', user });
+        const token = generateAuthToken(user);
+
+        res.cookie("token", token, {
+            withCredentials: true,
+            httpOnly: false,
+        });
+
+        res.status(200).json({ msg: 'Login successful', user, token });
     } catch (error) {
         console.error('Error during login:', error);
         res.status(500).json({ msg: 'Internal server error' });
@@ -150,29 +193,44 @@ app.post('/login', async (req, res) => {
 });
 
 
-app.post('/upload', async (req, res) => {
-    const { text } = req.body;
-    const newText = await TextModel.create({ text });
-    res.status(200).json({ newText });
+app.post('/upload', verifyAuthToken, async (req, res) => {
+    try {
+        console.log(req.user.name);
+        console.log('body: ', req.body);
+        const { text } = req.body;
+        
+        // Create the new text with createdBy as user's ObjectId
+        const newText = await TextModel.create({ text, createdBy: req.user.name });
+        
+        // Populate the createdBy field with the corresponding user's information
+        await newText.populate('createdBy');
+
+        console.log(newText);
+        res.status(200).json({ newText });
+    } catch (error) {
+        console.error('Error creating text:', error);
+        res.status(500).json({ error: 'Error creating text' });
+    }
 });
 
 
-const storage = multer.diskStorage({
-    destination: function (req, file, cb) {
-        cb(null, './public/uploads')
-    },
-    // filename: function (req, file, cb) {
-    //     const originalName = file.originalname; // Get the original filename
-    //     const extension = originalName.split('.').pop(); // Get the file extension
-    //     const uniqueSuffix = Date.now(); // Add a timestamp to make the filename unique
-    //     const newFilename = `${originalName}-${uniqueSuffix}.${extension}`; // Construct the new filename
-    //     cb(null, newFilename); // Pass the new filename to multer
-    // }
 
+
+
+
+
+
+cloudinary.config({
+    cloud_name: process.env.CLOUD_NAME,
+    api_key: process.env.API_KEY,
+    api_secret: process.env.API_SECRET,
+});
+
+const storage = multer.diskStorage({
     filename: function (req, file, cb) {
-        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9)
-        cb(null, file.fieldname + '-' + uniqueSuffix)
-      }
+        const filename = `${Date.now()}-${file.originalname}`;
+        cb(null, filename);
+    },
 });
 
 
@@ -183,38 +241,88 @@ app.post('/uploads', upload.single('image'), async function (req, res, next) {
         console.log('req.body: ', req.body);
         console.log('req.file: ', req.file);
 
-        const newPost = await FileModel.create({
-            imageUrl: req.file.path,
-        });
-        console.log(newPost);
+        cloudinary.uploader.upload(req.file.path, async (error, result) => {
+            if (error) {
+                console.error('Error uploading image to Cloudinary:', error);
+                return res.status(500).json({ error: 'Error uploading image to Cloudinary' });
+            }
 
-        res.json({ msg: "Image uploaded successfully", imageUrl: req.file.path });
+            const newPost = await FileModel.create({
+                imageUrl: result.secure_url,
+            });
+            console.log('New post created:', newPost);
+
+            res.json({ msg: "Image uploaded successfully", imageUrl: result.secure_url });
+        });
     } catch (error) {
         console.error('Error uploading image:', error);
         res.status(500).json({ error: 'Error uploading image' });
     }
 });
 
+app.post('/order', async (req, res) => {
+    const { itemName, quantity, location, destination } = req.body;
+    try {
+        if (location === destination) {
+            return res.status(400).json({ msg: "Source and destination can't be the same" });
+        }
+        const newOrder = await orderModel.create({ itemName, quantity, location, destination });
+        res.status(200).json({ newOrder, msg: 'Order placed successfully' });
+    } catch (error) {
+        console.error('Error creating order:', error);
+        res.status(500).json({ msg: 'Failed to create order' });
+    }
+});
+
+
+
+app.delete('/order/:orderId', async (req, res) => {
+    const orderId = req.params.orderId;
+
+    try {
+        const deletedOrder = await orderModel.findByIdAndDelete(orderId);
+
+        if (!deletedOrder) {
+            return res.status(404).json({ msg: 'Order not found' });
+        }
+
+        res.status(200).json({ msg: 'Order deleted', deletedOrder });
+    } catch (error) {
+        console.error('Error deleting order:', error);
+        res.status(500).json({ msg: 'Failed to delete order' });
+    }
+});
+
+
 app.get('/', async (req, res) => {
     try {
-        const posts = await TextModel.find({});
+        const posts = await TextModel.find({}).populate('createdBy');
         const images = await FileModel.find({});
+        const users = await userModel.find({});
+        const orders = await orderModel.find({});
 
-        res.json({ posts, images })
+        res.json({ posts, images, users, orders })
     } catch (error) {
         console.error('Error fetching data:', error);
         res.status(500).json({ error: 'Error fetching data' });
     }
 });
 
-app.get('/users', async (req, res) => {
+
+app.get('/orders/:orderId', async (req, res) => {
+    const { orderId } = req.params;
+
     try {
-        const users = await userModel.find({});
-        res.json({ users });
+        const order = await orderModel.findById(orderId);
+        if (!order) {
+            return res.status(404).json({ error: 'Order not found' });
+        }
+        res.json(order);
     } catch (error) {
-        console.error('Error fetching users:', error);
-        res.status(500).json({ error: 'Error fetching users' });
+        console.error('Error fetching order:', error);
+        res.status(500).json({ error: 'Error fetching order' });
     }
 });
+
 
 app.listen(port, () => console.log(`Example app listening on port ${port}!`));
